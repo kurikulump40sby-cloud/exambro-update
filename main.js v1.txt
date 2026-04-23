@@ -1,0 +1,109 @@
+const { app, BrowserWindow, globalShortcut } = require('electron');
+const path = require('path');
+
+let win;
+let isAllowedToClose = false;
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1024,
+    height: 768,
+    title: "Spenforty-ExamBrowser",
+    kiosk: true, 
+    alwaysOnTop: true, 
+    skipTaskbar: true, 
+    minimizable: false,
+    icon: path.join(__dirname, 'icon.ico'), 
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: false
+    }
+  });
+
+  win.loadURL('https://portalujian-smpn40sby.blogspot.com/');
+
+  // Blokir Klik Kanan
+  win.on('context-menu', (e) => {
+    e.preventDefault();
+  });
+
+  // Blokir Close / Alt+F4
+  win.on('close', (e) => {
+    if (!isAllowedToClose) {
+      e.preventDefault();
+      console.log("Percobaan menutup aplikasi ditolak.");
+    }
+  });
+}
+
+app.whenReady().then(() => {
+  
+  createWindow();
+
+  // --- LOGIKA PENGUNCI AGRESIF (KIOSK LOOP) ---
+  // Robot penjaga yang setiap 0.1 detik memastikan aplikasi tetap di depan
+  setInterval(() => {
+    if (win && !win.isDestroyed()) {
+      if (!win.isFocused()) {
+        win.focus();
+        win.setAlwaysOnTop(true, "screen-saver"); 
+      }
+    }
+  }, 100);
+
+  // --- DAFTAR SHORTCUT YANG DIBLOKIR ---
+  const shortcutsToBlock = [
+    'Alt+Tab',
+    'Alt+Esc',
+    'Alt+F4', 
+    'CommandOrControl+D', 
+    'CommandOrControl+E', 
+    'CommandOrControl+R', 
+    'PrintScreen', 
+    'CommandOrControl+Shift+S'
+  ];
+
+  shortcutsToBlock.forEach(accelerator => {
+    try {
+      globalShortcut.register(accelerator, () => {});
+    } catch (error) {
+      // Abaikan error
+    }
+  });
+
+  // --- TOMBOL KELUAR: ALT + F12 ---
+  try {
+    globalShortcut.register('Alt+F12', () => {
+      console.log("Tombol Keluar (ALT+F12) Ditekan...");
+      isAllowedToClose = true;
+      globalShortcut.unregisterAll();
+      app.quit();
+    });
+  } catch (error) {
+    console.log("Error tombol keluar:", error.message);
+  }
+  
+  // Cegah window baru
+  app.on('web-contents-created', (event, contents) => {
+    contents.on('new-window', (event, navigationUrl) => {
+      event.preventDefault();
+    });
+  });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});

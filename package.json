@@ -1,0 +1,52 @@
+{
+  "name": "spenforty-exambrowser",
+  "version": "1.0.0",
+  "description": "Exam Browser SMPN 40 Surabaya",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win",
+    "publish": "electron-builder --win -p always"
+  },
+  "build": {
+    "appId": "com.spenforty.exambrowser",
+    "productName": "Spenforty-ExamBrowser",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico",
+      "publish": {
+        "provider": "github",
+        "owner": "kurikulump40sby-cloud",
+        "repo": "exambro-update"
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "Spenforty ExamBrowser"
+    },
+    "files": [
+      "main.js",
+      "toolbar.js",
+      "icon.ico"
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  }
+}

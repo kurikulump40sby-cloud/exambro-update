@@ -1,0 +1,108 @@
+const { app, BrowserWindow, globalShortcut } = require('electron');
+const path = require('path');
+
+let win;
+let isAllowedToClose = false;
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1024,
+    height: 768,
+    title: "Spenforty-ExamBrowser",
+    kiosk: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    minimizable: false,
+    icon: path.join(__dirname, 'icon.ico'),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: false,
+      sandbox: true
+    }
+  });
+
+  win.loadURL('https://portalujian-smpn40sby.blogspot.com/');
+
+  // --- MANAJEMEN INPUT KEYBOARD (RELOAD, EXIT, & BLOCK COPY-PASTE) ---
+  win.webContents.on('before-input-event', (event, input) => {
+    const key = input.key.toLowerCase();
+
+    // 1. Tombol Keluar: ALT + F12
+    if (input.alt && input.key === 'F12') {
+      isAllowedToClose = true;
+      app.quit();
+    }
+
+    // 2. Tombol Reload: CTRL + R atau F5
+    if ((input.control && key === 'r') || input.key === 'F5') {
+      win.reload();
+      event.preventDefault();
+    }
+
+    // 3. BLOKIR COPY, PASTE, CUT (CTRL+C, CTRL+V, CTRL+X)
+    if (input.control && (key === 'c' || key === 'v' || key === 'x')) {
+      console.log(`Shortcut ${key.toUpperCase()} diblokir.`);
+      event.preventDefault();
+    }
+
+    // 4. Blokir Tombol Tambahan (Windows Key, F12 DevTools, dll)
+    const blockedKeys = ['f12', 'f11', 'meta'];
+    if (blockedKeys.includes(key)) {
+      event.preventDefault();
+    }
+  });
+
+  // Blokir Klik Kanan (Mencegah Copy-Paste via Menu Konteks)
+  win.on('context-menu', (e) => {
+    e.preventDefault();
+  });
+
+  // Cegah penutupan aplikasi secara tidak sengaja
+  win.on('close', (e) => {
+    if (!isAllowedToClose) {
+      e.preventDefault();
+    }
+  });
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  // Pastikan aplikasi tetap fokus (Kiosk Mode)
+  setInterval(() => {
+    if (win && !win.isDestroyed()) {
+      if (!win.isFocused()) {
+        win.focus();
+        win.setAlwaysOnTop(true, "screen-saver");
+      }
+    }
+  }, 500);
+
+  // Blokir shortcut sistem global
+  const globalBlocks = ['Alt+Tab', 'Alt+Esc', 'Alt+F4', 'PrintScreen'];
+  globalBlocks.forEach(accel => {
+    globalShortcut.register(accel, () => {});
+  });
+
+  // Paksa link (Google Form) terbuka di jendela yang sama
+  app.on('web-contents-created', (event, contents) => {
+    contents.setWindowOpenHandler(({ url }) => {
+      win.loadURL(url);
+      return { action: 'deny' };
+    });
+    
+    // Tambahan: Cegah drag and drop teks/konten ke dalam aplikasi
+    contents.on('will-navigate', (event) => {
+      // Opsional: tambahkan logika jika hanya ingin navigasi ke domain tertentu
+    });
+  });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});

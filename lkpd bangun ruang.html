@@ -1,0 +1,186 @@
+from weasyprint import HTML
+import os
+
+# Define the HTML content for the LKPD
+html_content = """
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @page {
+            size: 215mm 330mm; /* Folio / F4 size */
+            margin: 15mm;
+            background-color: #ffffff;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            line-height: 1.5;
+            margin: 0;
+            padding: 0;
+            font-size: 11pt;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 3px double #000;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 18pt;
+            text-transform: uppercase;
+        }
+        .header p {
+            margin: 5px 0 0;
+            font-style: italic;
+        }
+        .info-box {
+            width: 100%;
+            margin-bottom: 20px;
+            border-collapse: collapse;
+        }
+        .info-box td {
+            padding: 5px;
+            border: 1px solid #ccc;
+        }
+        .section-title {
+            background-color: #f2f2f2;
+            padding: 5px 10px;
+            font-weight: bold;
+            border-left: 5px solid #333;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            display: block;
+        }
+        .instruction-step {
+            margin-bottom: 10px;
+            padding-left: 5px;
+        }
+        .sketch-area {
+            width: 100%;
+            height: 250px;
+            border: 2px dashed #999;
+            margin: 10px 0;
+            position: relative;
+        }
+        .sketch-area::after {
+            content: "Gambarkan Sketsa Jaring-Jaring di Sini";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ccc;
+            font-size: 14pt;
+        }
+        .question-box {
+            margin-top: 10px;
+        }
+        .line {
+            border-bottom: 1px solid #ccc;
+            height: 20px;
+            margin-bottom: 5px;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 9pt;
+            color: #777;
+        }
+        ul, ol {
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>LEMBAR KERJA PESERTA DIDIK (LKPD)</h1>
+        <p>Materi: Memahami Jaring-Jaring Bangun Ruang & Membuat Kemasan Produk</p>
+    </div>
+
+    <table class="info-box">
+        <tr>
+            <td width="20%"><strong>Kelompok:</strong></td>
+            <td width="30%"></td>
+            <td width="20%"><strong>Kelas:</strong></td>
+            <td width="30%"></td>
+        </tr>
+        <tr>
+            <td><strong>Anggota:</strong></td>
+            <td colspan="3">
+1. _______________________ 
+2. _______________________ 
+3. _______________________ 
+4. _______________________
+</td>
+        </tr>
+    </table>
+
+    <div class="section-title">A. TUJUAN PEMBELAJARAN</div>
+    <ul>
+        <li>Mengidentifikasi bentuk bangun ruang melalui pengamatan alat peraga.</li>
+        <li>Menggambar jaring-jaring bangun ruang dengan ukuran yang presisi.</li>
+        <li>Membuat produk kemasan nyata berdasarkan konsep jaring-jaring bangun ruang.</li>
+    </ul>
+
+    <div class="section-title">B. ALAT DAN BAHAN</div>
+    <p>Kardus bekas/Karton, Penggaris, Pensil, Gunting, Perekat (Lem/Double Tape), dan Benda yang akan dibuatkan kemasannya.</p>
+
+    <div class="section-title">C. LANGKAH-LANGKAH KEGIATAN</div>
+    
+    <div class="instruction-step">
+        <strong>Tahap 1: Eksplorasi (Memahami)</strong>
+        <ol>
+            <li>Amati benda yang kalian bawa. Tentukan bangun ruang apa yang paling sesuai untuk dijadikan kemasan benda tersebut.</li>
+            <li>Diskusikan dengan kelompok bentuk jaring-jaringnya. Gambarlah sketsa kasarnya pada kotak di bawah ini:</li>
+        </ol>
+    </div>
+
+    <div class="sketch-area"></div>
+
+    <div class="instruction-step">
+        <strong>Tahap 2: Pengaplikasian (Membuat Karya)</strong>
+        <ol>
+            <li>Ukur dimensi benda (Panjang, Lebar, Tinggi).</li>
+            <li>Gambarkan jaring-jaring pada kardus/karton sesuai ukuran benda (berikan tambahan 1-2 cm di pinggir sisi tertentu sebagai tempat perekat/lem).</li>
+            <li>Gunting jaring-jaring tersebut, lipat, dan rekatkan hingga membentuk kemasan.</li>
+            <li>Cobalah masukkan benda kalian ke dalam kemasan tersebut.</li>
+        </ol>
+    </div>
+
+    <div style="page-break-before: always;"></div>
+
+    <div class="section-title">D. HASIL PENGAMATAN DAN DISKUSI</div>
+    <div class="question-box">
+        <p>1. Bangun ruang apa yang kalian pilih untuk kemasan benda tersebut? Mengapa?</p>
+        <div class="line"></div>
+        <div class="line"></div>
+        
+        <p>2. Apa kendala yang kalian hadapi saat menyatukan jaring-jaring menjadi bangun ruang?</p>
+        <div class="line"></div>
+        <div class="line"></div>
+
+        <p>3. Kesimpulan: Sebuah jaring-jaring dapat membentuk bangun ruang jika sisi-sisinya memiliki ukuran yang ...</p>
+        <div class="line"></div>
+    </div>
+
+    <div class="section-title">E. TIKET PRESENTASI</div>
+    <p>Siapkan jawaban ini untuk disampaikan di depan kelas:</p>
+    <ul>
+        <li>Tunjukkan kemasan yang kalian buat dan benda di dalamnya.</li>
+        <li>Jelaskan proses pengukuran yang kalian lakukan agar benda bisa masuk dengan pas.</li>
+    </ul>
+
+    <div class="footer">
+        "Matematika ada di sekitar kita. Selamat berkreasi dan menemukan hal baru!"
+    </div>
+</body>
+</html>
+"""
+
+# Output file path
+output_pdf = "LKPD_Bangun_Ruang_Folio.pdf"
+
+# Generate PDF
+HTML(string=html_content).write_pdf(output_pdf)

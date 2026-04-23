@@ -1,0 +1,191 @@
+const { app, BrowserWindow, globalShortcut, Menu } = require('electron');
+const path = require('path');
+const fs = require('fs');
+
+// ====== AUTO-UPDATER ======
+const { autoUpdater } = require('electron-updater');
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+// ===========================
+
+let win;
+let isAllowedToClose = false;
+const HOME_URL = 'https://portalujian-smpn40sby.blogspot.com/';
+
+// Baca kode toolbar dari file terpisah
+const toolbarCode = fs.readFileSync(path.join(__dirname, 'toolbar.js'), 'utf8');
+
+function injectToolbar() {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript(toolbarCode).catch((err) => {
+    console.error('Gagal inject toolbar:', err);
+  });
+}
+
+// Fungsi untuk menampilkan notifikasi update di dalam toolbar
+function showUpdateToast(message, bgColor) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.executeJavaScript(`
+    (function() {
+      let toast = document.getElementById('update-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'update-toast';
+        toast.style.cssText = 'margin-left:10px; padding:5px 12px; border-radius:6px; font-size:11px; font-weight:600; display:flex; align-items:center; gap:6px; color:#fff; animation: tb-fade-in 0.3s ease; white-space:nowrap;';
+        const tbRight = document.querySelector('.tb-right');
+        if(tbRight) tbRight.prepend(toast);
+      }
+      toast.style.background = '${bgColor}';
+      toast.innerHTML = '${message}';
+    })()
+  `).catch(() => {});
+}
+
+function createWindow() {
+  win = new BrowserWindow({
+    width: 1024,
+    height: 768,
+    title: "Spenforty-ExamBrowser",
+    kiosk: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    minimizable: false,
+    icon: path.join(__dirname, 'icon.ico'),
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      devTools: false,
+      sandbox: true
+    }
+  });
+
+  // HAPUS CSP HEADER
+  win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    const headers = Object.assign({}, details.responseHeaders);
+    delete headers['content-security-policy'];
+    delete headers['Content-Security-Policy'];
+    callback({ responseHeaders: headers });
+  });
+
+  win.loadURL(HOME_URL);
+
+  // INJECT TOOLBAR
+  win.webContents.on('did-finish-load', () => {
+    setTimeout(injectToolbar, 200);
+  });
+
+  // ====== LOGIKA AUTO-UPDATE ======
+  autoUpdater.checkForUpdatesAndNotify();
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('Memeriksa update...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    showUpdateToast('⬇️ Update v' + info.version + ' tersedia, mengunduh...', 'rgba(59, 130, 246, 0.9)');
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    const pct = Math.round(progress.percent);
+    showUpdateToast('⬇️ Mengunduh update... ' + pct + '%', 'rgba(59, 130, 246, 0.9)');
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    showUpdateToast('✅ Update v' + info.version + ' siap! Tekan Alt+F12 untuk install', 'rgba(34, 197, 94, 0.9)');
+  });
+
+  autoUpdater.on('error', (err) => {
+    // Error di sini wajar saat npm start (mode development)
+    // console.log('Error Auto-Update:', err);
+  });
+  // =================================
+
+  // --- MANAJEMEN INPUT KEYBOARD ---
+  win.webContents.on('before-input-event', (event, input) => {
+    const key = input.key.toLowerCase();
+
+    if (input.alt && input.key === 'F12') {
+      isAllowedToClose = true;
+      app.quit();
+    }
+
+    if ((input.control && key === 'r') || input.key === 'F5') {
+      win.reload();
+      event.preventDefault();
+    }
+
+    if (input.control && (key === 'c' || key === 'v' || key === 'x')) {
+      console.log(`Shortcut ${key.toUpperCase()} diblokir.`);
+      event.preventDefault();
+    }
+
+    const blockedKeys = ['f12', 'f11', 'meta'];
+    if (blockedKeys.includes(key)) {
+      event.preventDefault();
+    }
+  });
+
+  // Blokir Klik Kanan
+  win.on('context-menu', (e) => {
+    e.preventDefault();
+  });
+
+  // Cegah penutupan aplikasi
+  win.on('close', (e) => {
+    if (!isAllowedToClose) {
+      e.preventDefault();
+    }
+  });
+}
+
+app.whenReady().then(() => {
+  createWindow();
+
+  // Pastikan aplikasi tetap fokus (Kiosk Mode)
+  setInterval(() => {
+    if (win && !win.isDestroyed()) {
+      if (!win.isFocused()) {
+        win.focus();
+        win.setAlwaysOnTop(true, "screen-saver");
+      }
+    }
+  }, 500);
+
+  // Blokir shortcut sistem global
+  const globalBlocks = ['Alt+Tab', 'Alt+Esc', 'Alt+F4', 'PrintScreen'];
+  globalBlocks.forEach(accel => {
+    globalShortcut.register(accel, () => {});
+  });
+
+  // Paksa link terbuka di jendela yang sama & LOGIKA GANTI AKUN
+  app.on('web-contents-created', (event, contents) => {
+    contents.setWindowOpenHandler(({ url }) => {
+      win.loadURL(url);
+      return { action: 'deny' };
+    });
+
+    contents.on('will-navigate', (event, url) => {
+      // LOGIKA GANTI AKUN GOOGLE
+      if (url === 'https://exambro-switch.local') {
+        event.preventDefault(); // Batalkan buka URL palsu ini
+        
+        // 1. HAPUS COOKIE Google (akun lama akan terhapus total)
+        win.webContents.session.clearStorageData({ 
+          origins: ['https://accounts.google.com', 'https://docs.google.com'] 
+        }).then(() => {
+          // 2. Setelah cookie bersih, buka halaman Login Google yang murni
+          win.loadURL('https://accounts.google.com/ServiceLogin');
+        });
+        return; // Stop proses, jangan lanjut
+      }
+    });
+  });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
