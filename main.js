@@ -11,9 +11,10 @@ let win;
 let splash; // Variabel untuk layar pemuatan (Splash Screen)
 let isAllowedToClose = false;
 let isCheatDetected = false;
-let pressedKeys = new Set(); 
+let pressedKeys = new Set();
 
 const HOME_URL = 'ujikom.pakkar.my.id/2026/10/try-out-tka-sby.html';
+const GOOGLE_LOGOUT_AND_LOGIN = 'https://accounts.google.com/Logout?continue=https://accounts.google.com/ServiceLogin';
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
 Menu.setApplicationMenu(null);
@@ -35,20 +36,21 @@ async function clearSessionAndRelogin() {
     await win.webContents.session.clearAuthCache();
     setTimeout(() => {
       if (win && !win.isDestroyed()) {
-        win.loadURL('https://accounts.google.com/ServiceLogin');
+        win.loadURL(GOOGLE_LOGOUT_AND_LOGIN);
       }
     }, 500);
   } catch (err) {
-    if (win && !win.isDestroyed()) win.loadURL(HOME_URL);
+    console.error('Gagal menghapus sesi:', err);
+    if (win && !win.isDestroyed()) win.loadURL(GOOGLE_LOGOUT_AND_LOGIN);
   }
 }
 
 // FUNGSI ALARM BIOHAZARD (Tetap dipertahankan)
 function triggerCheatAlarm() {
   if (!win || win.isDestroyed() || isAllowedToClose || isCheatDetected) return;
-  isCheatDetected = true; 
+  isCheatDetected = true;
 
-  shell.beep(); 
+  shell.beep();
   win.restore();
   win.setAlwaysOnTop(true, 'screen-saver');
   win.focus();
@@ -57,27 +59,27 @@ function triggerCheatAlarm() {
     (function() {
       if (window.__isAlarmPlaying) return;
       window.__isAlarmPlaying = true;
-      
+
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AudioContext();
-      
+
       audioCtx.onstatechange = () => {
         if (audioCtx.state === 'suspended') audioCtx.resume();
       };
 
       const mainOsc = audioCtx.createOscillator();
-      mainOsc.type = 'sawtooth'; 
-      mainOsc.frequency.value = 350; 
+      mainOsc.type = 'sawtooth';
+      mainOsc.frequency.value = 350;
 
       const lfo = audioCtx.createOscillator();
       lfo.type = 'sine';
-      lfo.frequency.value = 0.5; 
+      lfo.frequency.value = 0.5;
 
       const lfoGain = audioCtx.createGain();
-      lfoGain.gain.value = 250; 
+      lfoGain.gain.value = 250;
 
       const mainGain = audioCtx.createGain();
-      mainGain.gain.value = 0.5; 
+      mainGain.gain.value = 0.5;
 
       lfo.connect(lfoGain);
       lfoGain.connect(mainOsc.frequency);
@@ -167,6 +169,7 @@ function createWindow() {
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     const headers = Object.assign({}, details.responseHeaders);
     delete headers['content-security-policy'];
+    delete headers['Content-Security-Policy'];
     callback({ responseHeaders: headers });
   });
 
@@ -179,16 +182,25 @@ function createWindow() {
     callback({});
   });
 
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.toLowerCase().includes('exambro-switch.local')) {
+      clearSessionAndRelogin();
+      return { action: 'deny' };
+    }
+    win.loadURL(url);
+    return { action: 'deny' };
+  });
+
   win.loadURL(HOME_URL);
 
   win.webContents.on('did-finish-load', () => {
-    isCheatDetected = false;    
+    isCheatDetected = false;
     setTimeout(injectToolbar, 300);
   });
 
   win.webContents.on('before-input-event', (event, input) => {
     const key = input.key.toLowerCase();
-    
+
     if (input.type === 'keyDown') {
       pressedKeys.add(key);
     } else if (input.type === 'keyUp') {
@@ -203,12 +215,12 @@ function createWindow() {
 
     // 2. FUNGSI RELOAD / REFRESH BARU: CTRL + R
     if (input.control && key === 'r' && input.type === 'keyDown') {
-      event.preventDefault(); 
-      isCheatDetected = false;      
-      win.reload();           
-      return;                 
+      event.preventDefault();
+      isCheatDetected = false;
+      win.reload();
+      return;
     }
-    
+
     // 3. PEMICU ALARM (Tombol Windows)
     if (key === 'meta' || key === 'os') {
       event.preventDefault();
@@ -229,9 +241,8 @@ function createWindow() {
     }
   });
 
-  // SUDAH DIPERBAIKI: Dari wwin menjadi win
   win.on('blur', () => {
-    pressedKeys.clear(); 
+    pressedKeys.clear();
     triggerCheatAlarm();
   });
 
@@ -249,7 +260,6 @@ app.whenReady().then(() => {
     try { globalShortcut.register(accel, () => {}); } catch (e) {}
   });
 
-  // SUDAH DIPERBAIKI: Menggunakan kondisi pintar mode dev/production
   if (!app.isPackaged) {
     // Jika masih npm start, langsung buka layar ujian agar bisa dicoba
     createWindow();
@@ -271,10 +281,10 @@ autoUpdater.on('download-progress', (progressObj) => {
 
 autoUpdater.on('update-downloaded', () => {
   updateSplashText('Pembaruan siap! Memulai ulang aplikasi...', 100);
-  isAllowedToClose = true; 
+  isAllowedToClose = true;
   setTimeout(() => {
-    autoUpdater.quitAndInstall(); 
-  }, 2000); 
+    autoUpdater.quitAndInstall();
+  }, 2000);
 });
 
 autoUpdater.on('update-not-available', () => {
@@ -284,8 +294,7 @@ autoUpdater.on('update-not-available', () => {
 
 autoUpdater.on('error', (err) => {
   if (splash && !splash.isDestroyed()) splash.close();
-  createWindow(); 
+  createWindow();
 });
 
-// SUDAH DIPERBAIKI: Menghapus kurung kurawal liar di bawah ini
 app.on('will-quit', () => { globalShortcut.unregisterAll(); });
