@@ -3,17 +3,18 @@ const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
-// Matikan auto-install bawaan karena kita akan mengaturnya secara manual
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = false;
 
 let win;
-let splash; // Variabel untuk layar pemuatan (Splash Screen)
+let splash;
 let isAllowedToClose = false;
 let isCheatDetected = false;
+let isDownloadingUpdate = false;
+let examStarted = false;
 let pressedKeys = new Set();
 
-const HOME_URL = 'ujikom.pakkar.my.id/2026/10/try-out-tka-sby.html';
+const HOME_URL = 'https://ujikom.pakkar.my.id/2026/10/try-out-tka-sby.html';
 const GOOGLE_LOGOUT_AND_LOGIN = 'https://accounts.google.com/Logout?continue=https://accounts.google.com/ServiceLogin';
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
@@ -45,7 +46,7 @@ async function clearSessionAndRelogin() {
   }
 }
 
-// FUNGSI ALARM BIOHAZARD (Tetap dipertahankan)
+// FUNGSI ALARM BIOHAZARD
 function triggerCheatAlarm() {
   if (!win || win.isDestroyed() || isAllowedToClose || isCheatDetected) return;
   isCheatDetected = true;
@@ -98,7 +99,7 @@ function triggerCheatAlarm() {
   `).catch(() => {});
 }
 
-// 1. FUNGSI LAYAR PEMUATAN (SPLASH SCREEN)
+// 1. LAYAR PEMUATAN (SPLASH SCREEN)
 function createSplashWindow() {
   splash = new BrowserWindow({
     width: 500,
@@ -113,19 +114,13 @@ function createSplashWindow() {
     }
   });
 
-  const splashHTML = `
-    data:text/html;charset=utf-8,
-    <html>
-      <body style="margin:0; padding:0; background:#1e1e1e; color:white; font-family:sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; border: 2px solid #10b981; border-radius: 10px; box-sizing:border-box;">
-        <h2 style="margin: 0 0 10px 0; color:#10b981;">Spenforty ExamBrowser</h2>
-        <p id="status" style="font-size: 16px; margin:0;">Memeriksa pembaruan...</p>
-        <div style="width: 80%; background: #333; height: 10px; border-radius: 5px; margin-top: 20px; overflow: hidden;">
-          <div id="progress" style="width: 0%; background: #10b981; height: 100%; transition: width 0.3s;"></div>
-        </div>
-      </body>
-    </html>
-  `;
-  splash.loadURL(splashHTML);
+  const splashHTML = `<html><body style="margin:0;background:#1e1e1e;color:white;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;border:2px solid #10b981;box-sizing:border-box;">
+<h2 style="margin:0 0 10px;color:#10b981;">Spenforty ExamBrowser</h2>
+<p id="status" style="font-size:16px;margin:0;">Memeriksa pembaruan...</p>
+<div style="width:80%;background:#333;height:10px;border-radius:5px;margin-top:20px;overflow:hidden;">
+<div id="progress" style="width:0%;background:#10b981;height:100%;transition:width .3s;"></div></div></body></html>`;
+
+  splash.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(splashHTML));
 }
 
 function updateSplashText(text, percent = 0) {
@@ -137,7 +132,7 @@ function updateSplashText(text, percent = 0) {
   }
 }
 
-// 2. FUNGSI LAYAR UJIAN UTAMA
+// 2. LAYAR UJIAN UTAMA
 function createWindow() {
   win = new BrowserWindow({
     fullscreen: true,
@@ -151,10 +146,10 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: false,
-      sandbox: true,
-      userAgent: CHROME_UA
+      sandbox: true
     }
   });
+  win.webContents.setUserAgent(CHROME_UA);
 
   win.webContents.on('did-finish-load', () => {
     const url = win.webContents.getURL();
@@ -207,13 +202,13 @@ function createWindow() {
       pressedKeys.delete(key);
     }
 
-    // 1. TOMBOL KELUAR BARU: CTRL + K + L
+    // 1. TOMBOL KELUAR: CTRL + K + L
     if (input.control && pressedKeys.has('k') && pressedKeys.has('l')) {
       isAllowedToClose = true;
       app.quit();
     }
 
-    // 2. FUNGSI RELOAD / REFRESH BARU: CTRL + R
+    // 2. RELOAD: CTRL + R
     if (input.control && key === 'r' && input.type === 'keyDown') {
       event.preventDefault();
       isCheatDetected = false;
@@ -228,13 +223,12 @@ function createWindow() {
     }
 
     // 4. BLOKIR COPY, PASTE, F5, dan F12
-    if ((input.control && (key === 'c' || key === 'v')) || input.key === 'f5' || key === 'f12') {
+    if ((input.control && (key === 'c' || key === 'v')) || key === 'f5' || key === 'f12') {
       event.preventDefault();
     }
   });
 
-  win.on('minimize', (e) => {
-    e.preventDefault();
+  win.on('minimize', () => {
     if (win && !win.isDestroyed()) {
       win.restore();
       win.focus();
@@ -250,51 +244,55 @@ function createWindow() {
 }
 
 // 3. LOGIKA AUTO-UPDATER
-app.whenReady().then(() => {
-  // Daftarkan tombol larangan
-  const globalBlocks = [
-    'Alt+Tab', 'Alt+Esc', 'Alt+F4', 'PrintScreen',
-    'Super+D', 'Super+M', 'Super+Down', 'Super+Up', 'Super+Left', 'Super+Right', 'Super+Tab'
-  ];
-  globalBlocks.forEach(accel => {
-    try { globalShortcut.register(accel, () => {}); } catch (e) {}
-  });
-
-  if (!app.isPackaged) {
-    // Jika masih npm start, langsung buka layar ujian agar bisa dicoba
-    createWindow();
-  } else {
-    // Jika sudah di-pack (.exe), aktifkan splash screen & cek update ke GitHub
-    createSplashWindow();
-    autoUpdater.checkForUpdates();
-  }
-});
+function startExam() {
+  if (examStarted) return;
+  examStarted = true;
+  if (splash && !splash.isDestroyed()) splash.close();
+  createWindow();
+}
 
 autoUpdater.on('update-available', () => {
+  isDownloadingUpdate = true;
   updateSplashText('Pembaruan ditemukan! Menyiapkan unduhan...', 10);
 });
 
-autoUpdater.on('download-progress', (progressObj) => {
-  let percent = Math.round(progressObj.percent);
-  updateSplashText(`Mengunduh pembaruan... ${percent}%`, percent);
+autoUpdater.on('download-progress', (p) => {
+  const percent = Math.round(p.percent);
+  updateSplashText('Mengunduh pembaruan... ' + percent + '%', percent);
 });
 
 autoUpdater.on('update-downloaded', () => {
   updateSplashText('Pembaruan siap! Memulai ulang aplikasi...', 100);
   isAllowedToClose = true;
-  setTimeout(() => {
-    autoUpdater.quitAndInstall();
-  }, 2000);
+  setTimeout(() => autoUpdater.quitAndInstall(true, true), 2000);
 });
 
-autoUpdater.on('update-not-available', () => {
-  if (splash && !splash.isDestroyed()) splash.close();
-  createWindow();
-});
+autoUpdater.on('update-not-available', startExam);
+autoUpdater.on('error', startExam);
 
-autoUpdater.on('error', (err) => {
-  if (splash && !splash.isDestroyed()) splash.close();
-  createWindow();
-});
+// Cegah aplikasi dibuka ganda
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.whenReady().then(() => {
+    const globalBlocks = [
+      'Alt+Tab', 'Alt+Esc', 'Alt+F4', 'PrintScreen',
+      'Super+D', 'Super+M', 'Super+Down', 'Super+Up', 'Super+Left', 'Super+Right', 'Super+Tab'
+    ];
+    globalBlocks.forEach((a) => {
+      try { globalShortcut.register(a, () => {}); } catch (e) {}
+    });
+
+    if (!app.isPackaged) {
+      startExam();
+    } else {
+      createSplashWindow();
+      // Batas tunggu 15 detik jika internet lambat / mati
+      setTimeout(() => { if (!isDownloadingUpdate) startExam(); }, 15000);
+      autoUpdater.checkForUpdates().catch(startExam);
+    }
+  });
+}
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); });

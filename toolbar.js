@@ -106,7 +106,7 @@
   }, 1000);
 
   // --- 4. FUNGSI PEMBUAT MODAL DINAMIS ---
-  const HOME_URL = 'ujikom.pakkar.my.id/2026/10/try-out-tka-sby.html';
+  const HOME_URL = 'https://ujikom.pakkar.my.id/2026/10/try-out-tka-sby.html';
   const TRIGGER_SWITCH_URL = 'https://exambro-switch.local';
 
   function showModal(config) {
