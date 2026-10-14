@@ -10,7 +10,7 @@ autoUpdater.autoInstallOnAppQuit = true;
 let win;
 let isAllowedToClose = false;
 
-const HOME_URL = 'https://portalujian-smpn40sby.blogspot.com/';
+const HOME_URL = 'ujikom.pakkar.my.id/2026/10/try-out-tka-sby.html';
 const GOOGLE_LOGOUT_AND_LOGIN = 'https://accounts.google.com/Logout?continue=https://accounts.google.com/ServiceLogin';
 
 Menu.setApplicationMenu(null);
