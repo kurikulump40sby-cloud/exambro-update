@@ -3,7 +3,7 @@
 
   // URL Pemicu (akan ditangkap oleh main.js)
   const TRIGGER_SWITCH_URL = 'http://exambro-switch.local';
-  const TRIGGER_HOME_URL = 'https://portalujian-smpn40sby.blogspot.com/';
+  const TRIGGER_HOME_URL = 'https://ujikom.pakkar.my.id/2026/10/try-out-tka-sby.html';
 
   // --- 1. INJEKSI CSS UNTUK TAMPILAN ---
   const style = document.createElement('style');
