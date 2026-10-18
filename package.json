@@ -27,7 +27,8 @@
       "publish": {
         "provider": "github",
         "owner": "kurikulump40sby-cloud",
-        "repo": "exambro-update"
+        "repo": "exambro-update",
+        "releaseType": "release"
       }
     },
     "nsis": {
