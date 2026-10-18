@@ -106,7 +106,10 @@
   }, 1000);
 
   // --- 4. FUNGSI PEMBUAT MODAL DINAMIS ---
-  const HOME_URL = 'https://ujikom.pakkar.my.id/2026/10/try-out-tka-sby.html';
+  // Alamat portal diambil dari konfigurasi Supabase (lihat config.js),
+  // bukan ditulis di sini lagi. Fallback hanya untuk jaga-jaga.
+  const CFG = window.__EXAM_CONFIG__ || {};
+  const HOME_URL = CFG.homeUrl || 'https://tka.smp-kotasurabaya.org/ujian';
   const TRIGGER_SWITCH_URL = 'https://exambro-switch.local';
 
   function showModal(config) {

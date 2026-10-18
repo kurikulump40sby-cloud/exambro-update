@@ -1,1 +1,4 @@
-https://portalujian-smpn40sby.blogspot.com
+https://tka.smp-kotasurabaya.org/ujian
+
+Catatan: sejak v2.1.0 alamat ini diambil otomatis dari tabel app_config
+di Supabase (key: exam_portal_url). File ini hanya catatan manual.
