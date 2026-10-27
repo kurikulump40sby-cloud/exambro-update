@@ -40,28 +40,37 @@ Selesai. Semua komputer akan memakai alamat baru pada pembukaan aplikasi berikut
 
 ## Mengganti kode keluar aplikasi
 
-Kode keluar disimpan di tabel **`app_secret`** (bukan `app_config`), supaya tidak bisa
-dibaca siswa meskipun mereka membongkar file aplikasi.
+Kode keluar berupa **4 digit angka**, disimpan di tabel **`app_secret`** (bukan `app_config`),
+supaya tidak bisa dibaca siswa meskipun mereka membongkar file aplikasi.
 
 1. Supabase → **Table Editor** → tabel **`app_secret`**
-2. Baris dengan key `exit_code` → ubah kolom `value`
+2. Baris dengan key `exit_code` → ubah kolom `value` jadi 4 digit angka
 3. **Save**
 
-Selesai. Hash untuk mode offline (`exit_code_hash` di `app_config`) ikut ter-update
-otomatis oleh trigger database — tidak perlu diisi manual.
+Kalau salah ketik (3 digit, 5 digit, atau ada huruf), Supabase akan menolak menyimpan —
+jadi tidak mungkin tidak sengaja merusak kode.
+
+Hash (`exit_code_hash` di `app_config`) ikut ter-update otomatis oleh trigger database.
+**Jangan pernah mengedit `exit_code_hash` manual.**
+
+Kode baru langsung berlaku saat itu juga selama komputer terhubung internet. Kalau sedang
+offline, kode baru baru terpakai setelah aplikasi dibuka ulang.
 
 **Cara memakai di komputer lab:**
 
 1. Tekan `Ctrl + K + L`
 2. Muncul jendela "Kode Keluar"
-3. Masukkan kode → aplikasi tertutup
+3. Ketik 4 digit → aplikasi tertutup
 
 Kalau salah 5 kali, dialog terkunci 60 detik. Tekan `Esc` untuk membatalkan.
 
-> **Saran:** pakai kode yang panjang (minimal 10 karakter, campur huruf dan angka).
-> Kode pendek seperti `1234` bisa ditebak, karena verifikasi bisa dicoba berulang.
+> **Soal keamanan 4 digit:** ada 10.000 kemungkinan. Dengan batas 5 percobaan per menit,
+> menebak sampai dapat butuh puluhan jam — tidak mungkin dilakukan siswa di tengah ujian.
+> Tapi kalau ada orang yang membongkar file aplikasi dan mengambil hash-nya, 4 digit bisa
+> dipecahkan komputer dalam hitungan detik. Untuk pengawasan ujian sekolah ini sudah
+> memadai; jangan dipakai untuk melindungi hal yang benar-benar rahasia.
 
-> **Kalau kode lupa:** buka Supabase, lihat/ubah di tabel `app_secret`.
+> **Kalau kode lupa:** buka Supabase, lihat di tabel `app_secret`.
 > Kalau sedang offline dan kode lupa, satu-satunya jalan adalah install ulang aplikasi.
 > Jadi catat kodenya di tempat aman.
 
@@ -122,9 +131,10 @@ dan file `.exe.blockmap`.
 
 | Kondisi | Cara verifikasi |
 |---|---|
-| Online | Aplikasi bertanya ke server Supabase. Kode asli tidak pernah dikirim ke aplikasi. |
+| Online | Konfigurasi disegarkan saat dialog dibuka, lalu kode dibandingkan dengan hash terbaru |
 | Offline | Dibandingkan dengan hash terakhir yang tersimpan di cache |
-| Belum pernah ada cache | Memakai kode bawaan `UJIAN-SMPN40-2026` |
+| Belum pernah ada hash | Memakai kode bawaan `4817` |
 
-Kode bawaan hanya berlaku sekali, sebelum aplikasi pernah berhasil mengambil konfigurasi
+Kode asli tidak pernah dikirim ke komputer siswa — yang ada di aplikasi hanya hash-nya.
+Kode bawaan `4817` hanya berlaku sebelum aplikasi pernah berhasil mengambil konfigurasi
 dari Supabase. Setelah itu selalu memakai kode dari database.

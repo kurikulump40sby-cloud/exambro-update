@@ -1,6 +1,6 @@
 -- ============================================================
 -- Spenforty ExamBrowser v2.2.0
--- Tabel kode keluar aplikasi
+-- Tabel kode keluar aplikasi (4 digit angka)
 -- Jalankan di Supabase -> SQL Editor (project homtgjcruyffvdqzcnca)
 -- ============================================================
 
@@ -20,35 +20,27 @@ create table if not exists public.app_secret (
 alter table public.app_secret enable row level security;
 revoke all on public.app_secret from anon, authenticated;
 
--- 2. Kode keluar awal. GANTI nilainya lewat Table Editor kapan saja.
+-- 3. Jaga format kode: harus tepat 4 digit angka.
+--    Kalau salah ketik (3 digit, 5 digit, atau ada huruf), Supabase menolak simpan.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'app_secret_exit_code_format'
+  ) then
+    alter table public.app_secret
+      add constraint app_secret_exit_code_format
+      check (key <> 'exit_code' or value ~ '^[0-9]{4}$');
+  end if;
+end $$;
+
+-- 4. Kode keluar awal: 4817
+--    GANTI lewat Table Editor -> app_secret -> baris exit_code.
 insert into public.app_secret (key, value, keterangan)
-values ('exit_code', 'UJIAN-SMPN40-2026', 'Kode keluar aplikasi (bisa diubah kapan saja)')
+values ('exit_code', '4817', 'Kode keluar aplikasi (4 digit angka)')
 on conflict (key) do nothing;
 
--- 3. Fungsi verifikasi. Aplikasi mengirim kode, server yang membandingkan.
---    Kode asli tidak pernah dikirim balik ke aplikasi.
-create or replace function public.check_exit_code(pin text)
-returns boolean
-language plpgsql
-security definer
-set search_path = public, extensions
-as $$
-declare
-  kode text;
-begin
-  select value into kode from public.app_secret where key = 'exit_code';
-  if kode is null then
-    return false;
-  end if;
-  return kode = pin;
-end;
-$$;
-
-revoke all on function public.check_exit_code(text) from public;
-grant execute on function public.check_exit_code(text) to anon, authenticated;
-
--- 4. Sinkronkan hash ke app_config supaya aplikasi tetap bisa memverifikasi
---    saat internet mati (memakai cache). Otomatis, tidak perlu diisi manual.
+-- 5. Sinkronkan hash ke app_config setiap kali kode berubah.
+--    Aplikasi hanya menerima hash ini, bukan kode aslinya.
 create or replace function public.sync_exit_code_hash()
 returns trigger
 language plpgsql
@@ -73,15 +65,14 @@ for each row
 when (new.key = 'exit_code')
 execute function public.sync_exit_code_hash();
 
--- 5. Isi hash pertama kali (trigger di atas baru aktif setelah dibuat)
+-- 6. Isi hash pertama kali (trigger di atas baru aktif setelah dibuat)
 update public.app_secret set value = value where key = 'exit_code';
 
--- 6. Muat ulang cache skema PostgREST
+-- 7. Muat ulang cache skema PostgREST
 notify pgrst, 'reload schema';
 
 -- ============================================================
 -- Verifikasi
 -- ============================================================
-select key, value from public.app_config where key = 'exit_code_hash';
-select public.check_exit_code('UJIAN-SMPN40-2026') as kode_benar,
-       public.check_exit_code('salah') as kode_salah;
+select value as kode_keluar from public.app_secret where key = 'exit_code';
+select value as hash_tersimpan from public.app_config where key = 'exit_code_hash';

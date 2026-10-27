@@ -179,6 +179,14 @@ async function requestExit() {
   // Turunkan dulu agar jendela kode keluar pasti tampil di atas jendela kiosk
   if (win && !win.isDestroyed()) win.setAlwaysOnTop(false);
 
+  // Segarkan konfigurasi di latar belakang supaya kode yang baru diubah
+  // di Supabase langsung terpakai, tanpa perlu menutup aplikasi lebih dulu.
+  resolveConfig()
+    .then((cfg) => {
+      if (cfg && cfg.exit_code_hash) appConfig = cfg;
+    })
+    .catch(() => {});
+
   let hasil = null;
   try {
     hasil = await promptExitCode(win, (code) => verifyExitCode(code, appConfig));

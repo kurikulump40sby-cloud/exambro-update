@@ -1,25 +1,24 @@
 /**
  * exit-guard.js
- * Mengatur kode keluar aplikasi.
+ * Mengatur kode keluar aplikasi (4 digit angka).
  *
- * Kode keluar disimpan di Supabase (tabel private `app_secret`, key `exit_code`),
- * jadi bisa diubah kapan saja tanpa build ulang.
+ * Kode asli disimpan di Supabase, tabel private `app_secret` (key `exit_code`).
+ * Aplikasi TIDAK pernah menerima kode asli. Yang dikirim ke aplikasi hanya
+ * `exit_code_hash` (SHA-256) di app_config, yang diisi otomatis oleh trigger
+ * database setiap kali kode diubah.
  *
- * Verifikasi dilakukan dua lapis:
- *   1. Online  -> RPC `check_exit_code` (kode asli tidak pernah dikirim ke aplikasi)
- *   2. Offline -> bandingkan SHA-256 dengan `exit_code_hash` di app_config (hasil cache)
- *
- * Tabel app_secret tidak bisa dibaca anon key, jadi siswa tidak bisa melihat kodenya.
+ * Verifikasi dilakukan sepenuhnya di komputer (offline-first), lalu dibatasi
+ * 5 percobaan per 60 detik supaya tidak bisa ditebak berulang-ulang.
  */
 
-const { BrowserWindow, ipcMain, net } = require('electron');
+const { BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
-const { SUPABASE_URL, SUPABASE_ANON_KEY } = require('./config');
 
-// Dipakai HANYA kalau belum pernah ada hash tersimpan DAN sedang offline.
-const DEFAULT_EXIT_CODE = 'UJIAN-SMPN40-2026';
+// Dipakai HANYA kalau belum ada hash tersimpan sama sekali.
+const DEFAULT_EXIT_CODE = '4817';
 
+const CODE_LENGTH = 4;
 const MAX_ATTEMPTS = 5;
 const LOCK_MS = 60 * 1000;
 
@@ -27,44 +26,28 @@ function sha256(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
 }
 
-const DEFAULT_HASH = sha256(DEFAULT_EXIT_CODE);
-
-async function verifyViaRpc(code) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
-
-  try {
-    const res = await net.fetch(`${SUPABASE_URL}/rest/v1/rpc/check_exit_code`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ pin: String(code) })
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    return data === true;
-  } finally {
-    clearTimeout(timer);
-  }
+/** Buang semua karakter selain angka, potong jadi 4 digit. */
+function normalizeCode(input) {
+  return String(input == null ? '' : input)
+    .replace(/\D/g, '')
+    .slice(0, CODE_LENGTH);
 }
 
+const DEFAULT_HASH = sha256(DEFAULT_EXIT_CODE);
+
+/**
+ * Membandingkan kode yang diketik dengan hash dari database.
+ * @returns {Promise<boolean>}
+ */
 async function verifyExitCode(code, config) {
-  try {
-    return await verifyViaRpc(code);
-  } catch (err) {
-    console.warn('[exit] verifikasi online gagal:', err.message);
-  }
+  const pin = normalizeCode(code);
+  if (pin.length !== CODE_LENGTH) return false;
 
   const hash = config && config.exit_code_hash;
-  if (hash) return sha256(code) === String(hash).toLowerCase();
+  if (hash) return sha256(pin) === String(hash).toLowerCase();
 
   console.warn('[exit] belum ada hash tersimpan, memakai kode bawaan');
-  return sha256(code) === DEFAULT_HASH;
+  return sha256(pin) === DEFAULT_HASH;
 }
 
 /**
@@ -80,7 +63,7 @@ function promptExitCode(parentWin, verify) {
 
     const modal = new BrowserWindow({
       width: 430,
-      height: 330,
+      height: 340,
       frame: false,
       resizable: false,
       minimizable: false,
@@ -109,7 +92,8 @@ function promptExitCode(parentWin, verify) {
          align-items:center; justify-content:center; border:2px solid #10b981; padding:24px; }
   h1 { font-size:18px; font-weight:600; margin:0 0 6px; color:#10b981; }
   p.sub { font-size:13px; color:#9ca3af; margin:0 0 20px; text-align:center; }
-  input { width:100%; padding:12px 14px; font-size:16px; letter-spacing:1px;
+  input { width:100%; padding:14px; font-size:26px; text-align:center; letter-spacing:14px;
+          text-indent:14px; font-family:'Consolas',monospace;
           background:#111827; border:1px solid #374151; border-radius:8px; color:#fff; outline:none; }
   input:focus { border-color:#10b981; }
   input:disabled { opacity:.5; }
@@ -122,8 +106,9 @@ function promptExitCode(parentWin, verify) {
 </style></head>
 <body>
   <h1>Kode Keluar</h1>
-  <p class="sub">Masukkan kode untuk menutup aplikasi ujian</p>
-  <input id="kode" type="password" autocomplete="off" spellcheck="false" placeholder="Kode keluar">
+  <p class="sub">Masukkan 4 digit kode untuk menutup aplikasi</p>
+  <input id="kode" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+         autocomplete="off" spellcheck="false" placeholder="••••">
   <button id="tombol">Buka Kunci</button>
   <div id="pesan"></div>
   <div id="petunjuk">Esc untuk batal</div>
@@ -133,10 +118,15 @@ function promptExitCode(parentWin, verify) {
   var pesan = document.getElementById('pesan');
   var mengirim = false;
 
+  input.addEventListener('input', function () {
+    var bersih = input.value.replace(/[^0-9]/g, '').slice(0, 4);
+    if (bersih !== input.value) input.value = bersih;
+  });
+
   function kirim() {
     if (mengirim) return;
-    var nilai = input.value.trim();
-    if (!nilai) { pesan.textContent = 'Kode tidak boleh kosong'; return; }
+    var nilai = input.value.replace(/[^0-9]/g, '');
+    if (nilai.length !== 4) { pesan.textContent = 'Kode harus 4 digit angka'; return; }
     mengirim = true;
     input.disabled = true;
     tombol.disabled = true;
@@ -232,4 +222,11 @@ function promptExitCode(parentWin, verify) {
   });
 }
 
-module.exports = { promptExitCode, verifyExitCode, sha256, DEFAULT_EXIT_CODE };
+module.exports = {
+  promptExitCode,
+  verifyExitCode,
+  sha256,
+  normalizeCode,
+  DEFAULT_EXIT_CODE,
+  CODE_LENGTH
+};
