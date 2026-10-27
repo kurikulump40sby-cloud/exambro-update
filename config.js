@@ -31,7 +31,8 @@ const DEFAULT_CONFIG = {
   maintenance: 'false',
   maintenance_message: '',
   min_app_version: '2.1.0',
-  extra_allowed_hosts: ''
+  extra_allowed_hosts: '',
+  exit_code_hash: ''
 };
 
 function cacheFilePath() {
@@ -151,4 +152,10 @@ async function resolveConfig() {
   return config;
 }
 
-module.exports = { resolveConfig, DEFAULT_CONFIG, isValidUrl };
+module.exports = {
+  resolveConfig,
+  DEFAULT_CONFIG,
+  isValidUrl,
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+};

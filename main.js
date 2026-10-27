@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 const { resolveConfig, DEFAULT_CONFIG } = require('./config');
+const { promptExitCode, verifyExitCode } = require('./exit-guard');
 
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = false;
@@ -17,6 +18,8 @@ let isAllowedToClose = false;
 let isCheatDetected = false;
 let examStarted = false;
 let splashExitShortcutRegistered = false;
+let exitPromptOpen = false;
+let suppressAlarm = false;
 
 const GOOGLE_LOGOUT_AND_LOGIN =
   'https://accounts.google.com/Logout?continue=https://accounts.google.com/ServiceLogin';
@@ -143,8 +146,7 @@ function registerSplashExitShortcut() {
   if (splashExitShortcutRegistered) return;
   try {
     globalShortcut.register('CommandOrControl+K+L', () => {
-      isAllowedToClose = true;
-      app.quit();
+      requestExit();
     });
     splashExitShortcutRegistered = true;
   } catch (err) {
@@ -160,6 +162,45 @@ function unregisterSplashExitShortcut() {
     /* diabaikan */
   }
   splashExitShortcutRegistered = false;
+}
+
+/* ------------------------------------------------------------------ */
+/* KODE KELUAR                                                        */
+/* ------------------------------------------------------------------ */
+
+async function requestExit() {
+  if (exitPromptOpen) return;
+  exitPromptOpen = true;
+
+  // Jendela kode keluar akan membuat jendela ujian kehilangan fokus.
+  // Alarm cheat dimatikan sementara supaya tidak berbunyi sendiri.
+  suppressAlarm = true;
+
+  // Turunkan dulu agar jendela kode keluar pasti tampil di atas jendela kiosk
+  if (win && !win.isDestroyed()) win.setAlwaysOnTop(false);
+
+  let hasil = null;
+  try {
+    hasil = await promptExitCode(win, (code) => verifyExitCode(code, appConfig));
+  } catch (err) {
+    console.error('[exit] gagal menampilkan dialog:', err);
+  } finally {
+    suppressAlarm = false;
+    exitPromptOpen = false;
+  }
+
+  if (hasil === 'ok') {
+    isAllowedToClose = true;
+    app.quit();
+    return;
+  }
+
+  // Batal / kode salah berulang: kembalikan fokus ke jendela ujian
+  if (win && !win.isDestroyed()) {
+    isCheatDetected = false;
+    win.setAlwaysOnTop(true, 'screen-saver');
+    win.focus();
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -351,6 +392,7 @@ async function clearSessionAndRelogin() {
 
 function triggerCheatAlarm() {
   if (!win || win.isDestroyed() || isAllowedToClose || isCheatDetected) return;
+  if (suppressAlarm) return;
   isCheatDetected = true;
 
   shell.beep();
@@ -480,10 +522,11 @@ function createWindow() {
       pressedKeys.delete(key);
     }
 
-    // 1. TOMBOL KELUAR: CTRL + K + L
+    // 1. TOMBOL KELUAR: CTRL + K + L (butuh kode keluar)
     if (input.control && pressedKeys.has('k') && pressedKeys.has('l')) {
-      isAllowedToClose = true;
-      app.quit();
+      pressedKeys.clear();
+      requestExit();
+      return;
     }
 
     // 2. RELOAD: CTRL + R
@@ -515,6 +558,7 @@ function createWindow() {
 
   win.on('blur', () => {
     if (win && win.__pressedKeys) win.__pressedKeys.clear();
+    if (suppressAlarm) return;
     triggerCheatAlarm();
   });
 

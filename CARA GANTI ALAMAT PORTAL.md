@@ -1,4 +1,4 @@
-# Cara Ganti Alamat Portal Ujian
+# Panduan Pengaturan Spenforty ExamBrowser
 
 Sejak versi **2.1.0**, alamat portal ujian tidak lagi ditulis di dalam aplikasi.
 Alamat diambil dari database Supabase setiap kali aplikasi dibuka.
@@ -31,9 +31,39 @@ Selesai. Semua komputer akan memakai alamat baru pada pembukaan aplikasi berikut
 | `maintenance_message` | teks | Pesan yang tampil saat maintenance |
 | `min_app_version` | contoh `2.1.0` | Versi minimum aplikasi. Versi lebih lama akan menolak dibuka |
 | `extra_allowed_hosts` | `domain1.com,domain2.com` | Domain tambahan yang boleh dibuka dari dalam halaman ujian (pisahkan dengan koma) |
+| `exit_code_hash` | *(otomatis)* | Hash kode keluar. **Jangan diedit manual** — terisi sendiri saat kode diubah |
 
 > **Penting:** `min_app_version` jangan dinaikkan sebelum versi barunya benar-benar
 > terpasang di komputer lab. Kalau dinaikkan terlalu cepat, aplikasi lama akan menolak dibuka.
+
+---
+
+## Mengganti kode keluar aplikasi
+
+Kode keluar disimpan di tabel **`app_secret`** (bukan `app_config`), supaya tidak bisa
+dibaca siswa meskipun mereka membongkar file aplikasi.
+
+1. Supabase → **Table Editor** → tabel **`app_secret`**
+2. Baris dengan key `exit_code` → ubah kolom `value`
+3. **Save**
+
+Selesai. Hash untuk mode offline (`exit_code_hash` di `app_config`) ikut ter-update
+otomatis oleh trigger database — tidak perlu diisi manual.
+
+**Cara memakai di komputer lab:**
+
+1. Tekan `Ctrl + K + L`
+2. Muncul jendela "Kode Keluar"
+3. Masukkan kode → aplikasi tertutup
+
+Kalau salah 5 kali, dialog terkunci 60 detik. Tekan `Esc` untuk membatalkan.
+
+> **Saran:** pakai kode yang panjang (minimal 10 karakter, campur huruf dan angka).
+> Kode pendek seperti `1234` bisa ditebak, karena verifikasi bisa dicoba berulang.
+
+> **Kalau kode lupa:** buka Supabase, lihat/ubah di tabel `app_secret`.
+> Kalau sedang offline dan kode lupa, satu-satunya jalan adalah install ulang aplikasi.
+> Jadi catat kodenya di tempat aman.
 
 ---
 
@@ -84,6 +114,17 @@ npm run publish
 Yang harus terunggah di setiap rilis: `latest.yml`, `Spenforty-ExamBrowser-Setup-<versi>.exe`,
 dan file `.exe.blockmap`.
 
-### Keluar paksa dari aplikasi
+### Keluar dari aplikasi
 
-`Ctrl + K + L` (saat jendela ujian aktif, maupun saat macet di splash).
+`Ctrl + K + L` → masukkan kode keluar. Berlaku saat jendela ujian aktif maupun saat macet di splash.
+
+### Verifikasi kode keluar
+
+| Kondisi | Cara verifikasi |
+|---|---|
+| Online | Aplikasi bertanya ke server Supabase. Kode asli tidak pernah dikirim ke aplikasi. |
+| Offline | Dibandingkan dengan hash terakhir yang tersimpan di cache |
+| Belum pernah ada cache | Memakai kode bawaan `UJIAN-SMPN40-2026` |
+
+Kode bawaan hanya berlaku sekali, sebelum aplikasi pernah berhasil mengambil konfigurasi
+dari Supabase. Setelah itu selalu memakai kode dari database.
