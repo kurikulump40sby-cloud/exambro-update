@@ -21,6 +21,11 @@ let splashExitShortcutRegistered = false;
 let exitPromptOpen = false;
 let suppressAlarm = false;
 
+// --- ZOOM ---
+const ZOOM_MIN = 0.25;  // 25% — minimum yang diminta Pak Hendro
+const ZOOM_MAX = 3.0;   // 300% — batas atas yang masih nyaman dibaca
+const ZOOM_STEP = 0.10; // 10% per scroll notch
+
 const GOOGLE_LOGOUT_AND_LOGIN =
   'https://accounts.google.com/Logout?continue=https://accounts.google.com/ServiceLogin';
 const CHROME_UA =
@@ -363,6 +368,64 @@ function startExam() {
 }
 
 /* ------------------------------------------------------------------ */
+/* ZOOM (Ctrl + Scroll)                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Mengatur zoom factor halaman ujian.
+ * @param {number} factor - nilai zoom baru (0.25 s/d 3.0)
+ */
+function setZoom(factor) {
+  if (!win || win.isDestroyed()) return;
+  const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(factor) || 1.0));
+  try {
+    win.webContents.setZoomFactor(clamped);
+    // Update label zoom di toolbar
+    win.webContents
+      .executeJavaScript(
+        `if (window.__updateZoomLabel) { window.__updateZoomLabel(${clamped}); }`
+      )
+      .catch(() => {});
+  } catch (err) {
+    /* abaikan kalau webContents belum siap */
+  }
+}
+
+/** Mengembalikan zoom ke 100%. */
+function resetZoom() {
+  setZoom(1.0);
+}
+
+/**
+ * Menangani event wheel (scroll) saat tombol Ctrl ditekan.
+ * Scroll ke atas = zoom in, scroll ke bawah = zoom out.
+ * Dipasang sebagai listener native di webContents.
+ */
+function setupZoomWheel() {
+  if (!win || win.isDestroyed()) return;
+
+  win.webContents.on('zoom-changed', (event, direction) => {
+    // Electron memancarkan event 'zoom-changed' ketika user melakukan
+    // Ctrl+Scroll secara native. Kita intercept dan atur sendiri
+    // supaya batas minimum 25% dan maksimum 300% dikontrol penuh.
+    event.preventDefault();
+
+    let current = 1.0;
+    try {
+      current = win.webContents.getZoomFactor();
+    } catch (err) {
+      /* webContents belum siap */
+    }
+
+    if (direction === 'in') {
+      setZoom(current + ZOOM_STEP);
+    } else if (direction === 'out') {
+      setZoom(current - ZOOM_STEP);
+    }
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* JENDELA UJIAN                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -516,6 +579,7 @@ function createWindow() {
 
     isCheatDetected = false;
     setTimeout(injectToolbar, 300);
+    setupZoomWheel();
   });
 
   win.loadURL(appConfig.exam_portal_url);
@@ -554,6 +618,13 @@ function createWindow() {
     // 4. BLOKIR COPY, PASTE, F5, dan F12
     if ((input.control && (key === 'c' || key === 'v')) || key === 'f5' || key === 'f12') {
       event.preventDefault();
+    }
+
+    // 5. RESET ZOOM: CTRL + 0
+    if (input.control && key === '0' && input.type === 'keyDown') {
+      event.preventDefault();
+      resetZoom();
+      return;
     }
   });
 

@@ -105,6 +105,41 @@
     document.getElementById('exam-date').textContent = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
   }, 1000);
 
+  // --- 3b. ZOOM INDICATOR ---
+  // Label zoom diperbarui oleh main process (main.js) melalui executeJavaScript
+  // setiap kali zoom berubah. Di sini kita hanya membuat elemennya.
+  const zoomLabel = document.createElement('span');
+  zoomLabel.id = 'exam-zoom-label';
+  zoomLabel.style.cssText = 'background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; min-width:50px; text-align:center; transition:all 0.2s ease; border:1px solid rgba(255,255,255,0.05);';
+  zoomLabel.title = 'Ctrl + Scroll untuk zoom, Ctrl + 0 untuk reset';
+  zoomLabel.textContent = '100%';
+
+  // Fungsi ini dipanggil dari main.js via executeJavaScript untuk update label
+  window.__updateZoomLabel = function (factor) {
+    var pct = Math.round(factor * 100);
+    var el = document.getElementById('exam-zoom-label');
+    if (el) el.textContent = pct + '%';
+  };
+
+  // Klik label zoom = reset ke 100% (dipanggil via custom event dari main)
+  zoomLabel.onclick = function () {
+    // Trigger reset via custom event yang didengar oleh main process interceptor
+    var ev = new CustomEvent('exam-zoom-reset');
+    window.dispatchEvent(ev);
+    // Fallback: coba set langsung via CSS transform (visual only)
+    window.__updateZoomLabel(1.0);
+  };
+
+  // Sisipkan label zoom ke toolbar (sebelum jam)
+  var tbRight = document.querySelector('.tb-right');
+  if (tbRight) {
+    var zoomDivider = document.createElement('span');
+    zoomDivider.style.cssText = 'opacity:0.3; margin:0 4px;';
+    zoomDivider.textContent = '|';
+    tbRight.insertBefore(zoomDivider, tbRight.firstChild);
+    tbRight.insertBefore(zoomLabel, tbRight.firstChild);
+  }
+
   // --- 4. FUNGSI PEMBUAT MODAL DINAMIS ---
   // Alamat portal diambil dari konfigurasi Supabase (lihat config.js),
   // bukan ditulis di sini lagi. Fallback hanya untuk jaga-jaga.
