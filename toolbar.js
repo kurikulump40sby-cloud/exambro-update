@@ -27,7 +27,7 @@
     .tb-time { font-weight: bold; color: #fff; }
 
     /* Style Overlay & Modal Pop-up */
-    #exam-modal-overlay {
+    #exam-modal-overlay, #exam-update-overlay {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0,0,0,0.5); backdrop-filter: blur(5px);
       z-index: 2147483646; display: flex; justify-content: center; align-items: center;
@@ -145,6 +145,151 @@
     zoomDivider.textContent = '|';
     tbRight.insertBefore(zoomDivider, tbRight.firstChild);
     tbRight.insertBefore(zoomLabel, tbRight.firstChild);
+  }
+
+  // --- 3c. TEKS VERSI = TOMBOL CEK PEMBARUAN MANUAL ---
+  // Dipakai saat pemeriksaan otomatis waktu startup gagal karena server
+  // pembaruan lambat / tidak merespons. Tidak ada tombol bantuan.
+  const appVersion = (window.__EXAM_CONFIG__ && window.__EXAM_CONFIG__.version) || '';
+  const versionLabel = document.createElement('span');
+  versionLabel.id = 'exam-version-label';
+  versionLabel.style.cssText = 'background:rgba(255,255,255,0.1); padding:4px 10px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; border:1px solid rgba(255,255,255,0.05);';
+  versionLabel.title = 'Klik untuk memeriksa pembaruan aplikasi';
+  versionLabel.textContent = 'v' + (appVersion || '?');
+
+  let updateOverlay = null;
+  let lastUpdateStatus = null;
+
+  function closeUpdateDialog() {
+    if (updateOverlay && updateOverlay.parentNode) {
+      updateOverlay.parentNode.removeChild(updateOverlay);
+    }
+    updateOverlay = null;
+  }
+
+  function showUpdateDialog(state, message, percent) {
+    if (!updateOverlay) {
+      updateOverlay = document.createElement('div');
+      updateOverlay.id = 'exam-update-overlay';
+      updateOverlay.innerHTML =
+        '<div class="exam-modal-box">' +
+          '<div class="modal-title" id="upd-title"></div>' +
+          '<div class="modal-desc" id="upd-desc"></div>' +
+          '<div id="upd-progress"></div>' +
+          '<div id="upd-alert"></div>' +
+          '<div class="modal-actions" id="upd-actions"></div>' +
+        '</div>';
+      document.body.appendChild(updateOverlay);
+    }
+
+    let title = 'Pembaruan aplikasi';
+    let desc = message || '';
+    let alertHtml = '';
+    let actions = '';
+    let showProgress = false;
+    let pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+
+    if (state === 'confirm') {
+      title = 'Periksa pembaruan?';
+      desc = 'Aplikasi akan menghubungi server untuk mencari versi terbaru. Jika tersedia, berkas diunduh dan dipasang otomatis, lalu aplikasi dibuka kembali.';
+      alertHtml = '<div class="modal-alert alert-blue"><div>i</div><div>Gunakan tombol ini bila pemeriksaan otomatis gagal karena koneksi lambat atau tidak stabil.</div></div>';
+      actions = '<button class="btn-modal btn-cancel" id="upd-no">Tidak</button>' +
+                '<button class="btn-modal btn-primary" id="upd-yes">Ya, Periksa</button>';
+    } else if (state === 'checking') {
+      title = 'Memeriksa pembaruan...';
+      desc = message || 'Menghubungi server pembaruan. Mohon tunggu...';
+      showProgress = true;
+      pct = 10;
+      actions = '<button class="btn-modal btn-cancel" id="upd-no">Tutup</button>';
+    } else if (state === 'downloading') {
+      title = 'Mengunduh pembaruan...';
+      desc = message || 'Jangan menutup aplikasi selama proses berlangsung.';
+      showProgress = true;
+      actions = '<button class="btn-modal btn-cancel" id="upd-no">Tutup</button>';
+    } else if (state === 'installing') {
+      title = 'Pembaruan siap dipasang';
+      desc = message || 'Aplikasi akan ditutup dan dibuka kembali secara otomatis.';
+      showProgress = true;
+      pct = 100;
+    } else if (state === 'latest') {
+      title = 'Sudah versi terbaru';
+      desc = message || 'Aplikasi Anda sudah menggunakan versi paling baru.';
+      actions = '<button class="btn-modal btn-primary" id="upd-no">Tutup</button>';
+    } else if (state === 'error') {
+      title = 'Server pembaruan belum merespons';
+      desc = message || 'Koneksi ke server pembaruan gagal. Periksa internet lalu coba lagi.';
+      alertHtml = '<div class="modal-alert alert-red"><div>!</div><div>Ujian tetap dapat dilanjutkan. Pembaruan bisa dicoba lagi kapan saja lewat tombol versi.</div></div>';
+      actions = '<button class="btn-modal btn-cancel" id="upd-no">Tutup</button>' +
+                '<button class="btn-modal btn-primary" id="upd-retry">Coba Lagi</button>';
+    } else if (state === 'dev') {
+      title = 'Mode pengembangan';
+      desc = message || 'Pemeriksaan pembaruan hanya berjalan pada aplikasi yang dipasang lewat installer.';
+      actions = '<button class="btn-modal btn-primary" id="upd-no">Tutup</button>';
+    }
+
+    document.getElementById('upd-title').textContent = title;
+    document.getElementById('upd-desc').textContent = desc;
+    document.getElementById('upd-alert').innerHTML = alertHtml;
+
+    const progressEl = document.getElementById('upd-progress');
+    if (showProgress) {
+      if (!document.getElementById('upd-progress-wrap')) {
+        progressEl.innerHTML =
+          '<div id="upd-progress-wrap" style="width:100%;background:#e2e8f0;height:8px;border-radius:5px;overflow:hidden;margin:4px 0 18px;">' +
+            '<div id="upd-bar" style="width:0%;background:#10b981;height:100%;transition:width .3s;"></div>' +
+          '</div>';
+      }
+      document.getElementById('upd-bar').style.width = pct + '%';
+    } else {
+      progressEl.innerHTML = '';
+    }
+
+    document.getElementById('upd-actions').innerHTML = actions;
+
+    const btnNo = document.getElementById('upd-no');
+    if (btnNo) btnNo.onclick = closeUpdateDialog;
+    const btnYes = document.getElementById('upd-yes');
+    if (btnYes) btnYes.onclick = requestUpdateCheck;
+    const btnRetry = document.getElementById('upd-retry');
+    if (btnRetry) btnRetry.onclick = requestUpdateCheck;
+  }
+
+  function requestUpdateCheck() {
+    if (!window.examUpdate || typeof window.examUpdate.check !== 'function') {
+      showUpdateDialog('error', 'Fitur pembaruan tidak tersedia pada halaman ini.', 0);
+      return;
+    }
+    showUpdateDialog('checking', 'Menghubungi server pembaruan. Mohon tunggu...', 10);
+    window.examUpdate.check();
+  }
+
+  versionLabel.onclick = function () {
+    // Kalau pemeriksaan masih berjalan dan kotaknya tadi ditutup,
+    // tampilkan lagi status terakhir, jangan mulai pemeriksaan baru.
+    if (!updateOverlay && lastUpdateStatus &&
+        ['checking', 'downloading', 'installing'].indexOf(lastUpdateStatus.state) !== -1) {
+      showUpdateDialog(lastUpdateStatus.state, lastUpdateStatus.message, lastUpdateStatus.percent);
+      return;
+    }
+    showUpdateDialog('confirm');
+  };
+
+  const verTbRight = document.querySelector('.tb-right');
+  if (verTbRight) {
+    const verDivider = document.createElement('span');
+    verDivider.style.cssText = 'opacity:0.3; margin:0 4px;';
+    verDivider.textContent = '|';
+    verTbRight.appendChild(verDivider);
+    verTbRight.appendChild(versionLabel);
+  }
+
+  if (window.examUpdate && typeof window.examUpdate.onStatus === 'function') {
+    window.examUpdate.onStatus(function (status) {
+      if (!status || status.state === 'idle') return;
+      lastUpdateStatus = status;
+      if (!updateOverlay) return; // "Tidak" sudah dipilih: abaikan status
+      showUpdateDialog(status.state, status.message, status.percent);
+    });
   }
 
   // --- 4. FUNGSI PEMBUAT MODAL DINAMIS ---

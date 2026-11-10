@@ -307,6 +307,214 @@ function tungguUnduhan(timeoutMs) {
 }
 
 /* ------------------------------------------------------------------ */
+/* PEMBARUAN MANUAL DARI TOOLBAR (klik teks versi)                    */
+/* ------------------------------------------------------------------ */
+
+// Pemeriksaan manual sengaja jauh lebih sabar daripada cek otomatis saat
+// startup (10 detik). Keluhan di lapangan adalah jaringan sekolah yang
+// lambat / tidak stabil, jadi server yang lama menjawab tidak boleh
+// langsung dianggap gagal. Logika boot di atas TIDAK diubah.
+const MANUAL_CHECK_TIMEOUT_MS = 60 * 1000;   // tunggu jawaban server
+const MANUAL_STALL_TIMEOUT_MS = 120 * 1000;  // unduhan tanpa progres
+const MANUAL_INSTALL_DELAY_MS = 1500;        // beri waktu pesan tampil
+
+let manualUpdateActive = false;
+let manualCheckTimer = null;
+let manualStallTimer = null;
+let manualInstallTimer = null;
+// Penanda percobaan. Cek otomatis saat startup bisa masih menggantung
+// (timeout 10 detik TIDAK membatalkan request), sehingga checkForUpdates()
+// dapat mengembalikan promise lama. Hasil promise yang sudah basi tidak
+// boleh menimpa status percobaan yang lebih baru (tombol "Coba Lagi").
+let manualRunId = 0;
+let manualSawAvailable = false;
+
+function clearManualTimers() {
+  if (manualCheckTimer) { clearTimeout(manualCheckTimer); manualCheckTimer = null; }
+  if (manualStallTimer) { clearTimeout(manualStallTimer); manualStallTimer = null; }
+  if (manualInstallTimer) { clearTimeout(manualInstallTimer); manualInstallTimer = null; }
+}
+
+function sendUpdateStatus(state, message, percent) {
+  if (!win || win.isDestroyed()) return;
+  try {
+    win.webContents.send('exam-update:status', {
+      state: state,
+      message: String(message || ''),
+      percent: Math.max(0, Math.min(100, Math.round(Number(percent) || 0)))
+    });
+  } catch (err) {
+    /* webContents belum siap */
+  }
+}
+
+function detachManualListeners() {
+  autoUpdater.removeListener('update-not-available', manualOnNone);
+  autoUpdater.removeListener('update-available', manualOnAvailable);
+  autoUpdater.removeListener('update-downloaded', manualOnDownloaded);
+  autoUpdater.removeListener('download-progress', manualOnProgress);
+  autoUpdater.removeListener('error', manualOnError);
+}
+
+function endManualUpdate() {
+  detachManualListeners();
+  clearManualTimers();
+  manualUpdateActive = false;
+}
+
+function armDownloadStall() {
+  if (manualStallTimer) clearTimeout(manualStallTimer);
+  manualStallTimer = setTimeout(() => {
+    manualOnError(new Error('unduhan berhenti, koneksi tidak stabil'));
+  }, MANUAL_STALL_TIMEOUT_MS);
+}
+
+function manualOnNone() {
+  if (!manualUpdateActive) return;
+  sendUpdateStatus('latest', 'Aplikasi sudah memakai versi terbaru.', 100);
+  endManualUpdate();
+}
+
+function manualOnAvailable(info) {
+  if (!manualUpdateActive) return;
+  if (manualCheckTimer) { clearTimeout(manualCheckTimer); manualCheckTimer = null; }
+  manualSawAvailable = true;
+  const ver = info && info.version ? ' v' + info.version : '';
+  sendUpdateStatus('downloading', 'Pembaruan' + ver + ' ditemukan, memulai unduhan...', 0);
+  armDownloadStall();
+}
+
+function manualOnProgress(p) {
+  if (!manualUpdateActive || !p) return;
+  // Progres bisa datang lebih dulu daripada event update-available kalau
+  // unduhan sudah berjalan sejak cek otomatis saat startup.
+  if (manualCheckTimer) { clearTimeout(manualCheckTimer); manualCheckTimer = null; }
+  manualSawAvailable = true;
+  const pct = Math.max(1, Math.round(p.percent));
+  sendUpdateStatus('downloading', 'Mengunduh pembaruan... ' + pct + '%', pct);
+  armDownloadStall();
+}
+
+function manualOnDownloaded() {
+  if (!manualUpdateActive) return;
+  detachManualListeners();
+  if (manualCheckTimer) { clearTimeout(manualCheckTimer); manualCheckTimer = null; }
+  if (manualStallTimer) { clearTimeout(manualStallTimer); manualStallTimer = null; }
+
+  sendUpdateStatus(
+    'installing',
+    'Pembaruan selesai diunduh. Memasang lalu membuka kembali aplikasi...',
+    100
+  );
+
+  // quitAndInstall memicu app.quit(); handler win.on('close') tidak boleh menahan.
+  isAllowedToClose = true;
+  manualInstallTimer = setTimeout(() => {
+    manualInstallTimer = null;
+    manualUpdateActive = false;
+    try {
+      // isSilent=false karena installer NSIS project ini bersifat assisted.
+      // isForceRunAfter=true supaya aplikasi terbuka lagi setelah selesai.
+      autoUpdater.quitAndInstall(false, true);
+    } catch (err) {
+      isAllowedToClose = false;
+      sendUpdateStatus(
+        'error',
+        'Gagal memasang pembaruan: ' + (err && err.message ? err.message : err),
+        0
+      );
+    }
+  }, MANUAL_INSTALL_DELAY_MS);
+}
+
+function manualOnError(err) {
+  if (!manualUpdateActive) return;
+  const alasan = err && err.message ? err.message : String(err);
+  sendUpdateStatus(
+    'error',
+    'Koneksi ke server pembaruan tidak berhasil (' + alasan + '). ' +
+      'Ujian tetap bisa dilanjutkan; periksa internet lalu coba lagi.',
+    0
+  );
+  endManualUpdate();
+}
+
+function setupManualUpdate() {
+  if (setupManualUpdate.done) return;
+  setupManualUpdate.done = true;
+
+  ipcMain.on('exam-update:check', () => {
+    if (manualUpdateActive) return; // sudah berjalan, pakai status terakhir
+    startManualUpdate();
+  });
+}
+
+function startManualUpdate() {
+  // electron-updater hanya aktif pada aplikasi terpasang (app.asar).
+  // Dari `npm start` tidak ada app-update.yml, jadi beri pesan jujur.
+  if (!app.isPackaged) {
+    sendUpdateStatus(
+      'dev',
+      'Mode pengembangan: pemeriksaan pembaruan hanya berjalan pada aplikasi yang dipasang lewat installer.',
+      0
+    );
+    return;
+  }
+
+  manualUpdateActive = true;
+  manualSawAvailable = false;
+  const runId = ++manualRunId;
+  detachManualListeners();
+
+  autoUpdater.once('update-not-available', manualOnNone);
+  autoUpdater.once('update-available', manualOnAvailable);
+  autoUpdater.once('update-downloaded', manualOnDownloaded);
+  autoUpdater.on('download-progress', manualOnProgress);
+  autoUpdater.once('error', manualOnError);
+
+  sendUpdateStatus('checking', 'Menghubungi server pembaruan. Mohon tunggu...', 10);
+
+  manualCheckTimer = setTimeout(() => {
+    manualOnError(new Error('waktu tunggu 60 detik habis'));
+  }, MANUAL_CHECK_TIMEOUT_MS);
+
+  try {
+    autoUpdater.checkForUpdates()
+      .then((res) => {
+        if (!manualUpdateActive || runId !== manualRunId) return;
+
+        if (res === null) {
+          manualOnError(new Error('pembaruan tidak aktif'));
+          return;
+        }
+        // Event bisa sudah terlepas kalau checkForUpdates() mengembalikan
+        // promise hasil cek otomatis yang lebih dulu selesai. Karena itu
+        // hasil akhirnya tetap dipakai sebagai penentu status dialog.
+        if (res && res.isUpdateAvailable === false) {
+          manualOnNone();
+          return;
+        }
+        if (!manualSawAvailable) {
+          const ver = res && res.updateInfo && res.updateInfo.version
+            ? ' v' + res.updateInfo.version : '';
+          sendUpdateStatus('downloading', 'Pembaruan' + ver + ' ditemukan, memulai unduhan...', 0);
+          armDownloadStall();
+        }
+        if (res && res.downloadPromise) {
+          res.downloadPromise.catch((err) => {
+            if (manualUpdateActive && runId === manualRunId) manualOnError(err);
+          });
+        }
+      })
+      .catch((err) => {
+        if (manualUpdateActive && runId === manualRunId) manualOnError(err);
+      });
+  } catch (err) {
+    manualOnError(err);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* ALUR STARTUP                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -553,6 +761,7 @@ function createWindow() {
   });
 
   setupZoomWheel();
+  setupManualUpdate();
   clampNativeZoom();
 
   win.webContents.setUserAgent(CHROME_UA);

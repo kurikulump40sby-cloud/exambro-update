@@ -1,11 +1,13 @@
 /**
  * preload-zoom.js
- * Berjalan di isolated world jendela ujian. Tugasnya hanya dua:
+ * Berjalan di isolated world jendela ujian. Tugasnya:
  *   1. Menangkap Ctrl + Scroll (wheel) dan mencegah zoom bawaan Chromium.
  *   2. Mengirim arah zoom ke main process lewat IPC.
+ *   3. Menjembatani tombol cek pembaruan manual yang ada di teks versi toolbar.
  *
  * Tidak membuka akses Node ke halaman ujian. Yang diekspos ke halaman
- * hanyalah objek kecil `window.examZoom` lewat contextBridge.
+ * hanyalah objek kecil `window.examZoom` dan `window.examUpdate`
+ * lewat contextBridge.
  */
 
 const { contextBridge, ipcRenderer } = require('electron');
@@ -43,6 +45,37 @@ contextBridge.exposeInMainWorld('examZoom', {
  * diubah oleh script halaman. Ini membuat fitur zoom tetap jalan walau
  * portal ujian memasang handler wheel sendiri.
  */
+/* ------------------------------------------------------------------ */
+/* JEMBATAN PEMBARUAN MANUAL (tombol teks versi di toolbar)            */
+/* ------------------------------------------------------------------ */
+
+let lastUpdateStatus = { state: 'idle', message: '', percent: 0 };
+const updateListeners = new Set();
+
+ipcRenderer.on('exam-update:status', (_event, status) => {
+  lastUpdateStatus = status && status.state
+    ? status
+    : { state: 'idle', message: '', percent: 0 };
+  updateListeners.forEach((cb) => {
+    try { cb(lastUpdateStatus); } catch (err) { /* listener halaman error: abaikan */ }
+  });
+});
+
+contextBridge.exposeInMainWorld('examUpdate', {
+  /** Minta main process memeriksa + mengunduh + memasang pembaruan. */
+  check: () => ipcRenderer.send('exam-update:check'),
+
+  /** Status terakhir, berguna kalau dialog dibuka ulang. */
+  getStatus: () => lastUpdateStatus,
+
+  /** Dipanggil tiap kali ada status baru dari main process. */
+  onStatus: (callback) => {
+    if (typeof callback !== 'function') return () => {};
+    updateListeners.add(callback);
+    return () => updateListeners.delete(callback);
+  }
+});
+
 window.addEventListener(
   'wheel',
   (event) => {

@@ -1,6 +1,6 @@
 {
   "name": "spenforty-exambrowser",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Exam Browser SMPN 40 Surabaya",
   "main": "main.js",
   "scripts": {
