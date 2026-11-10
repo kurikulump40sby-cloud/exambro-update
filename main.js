@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, Menu, shell } = require('electron');
+const { app, BrowserWindow, globalShortcut, Menu, shell, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
@@ -372,15 +372,16 @@ function startExam() {
 /* ------------------------------------------------------------------ */
 
 /**
- * Mengatur zoom factor halaman ujian.
- * @param {number} factor - nilai zoom baru (0.25 s/d 3.0)
+ * Mengatur zoom factor halaman ujian (0.25 s/d 3.0).
+ * Sekaligus mengirim nilai terbaru ke toolbar supaya label persentase
+ * selalu sinkron dengan tampilan.
  */
 function setZoom(factor) {
   if (!win || win.isDestroyed()) return;
   const clamped = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(factor) || 1.0));
   try {
     win.webContents.setZoomFactor(clamped);
-    // Update label zoom di toolbar
+    win.webContents.send('exam-zoom:changed', clamped);
     win.webContents
       .executeJavaScript(
         `if (window.__updateZoomLabel) { window.__updateZoomLabel(${clamped}); }`
@@ -391,37 +392,52 @@ function setZoom(factor) {
   }
 }
 
-/** Mengembalikan zoom ke 100%. */
 function resetZoom() {
   setZoom(1.0);
 }
 
+function nudgeZoom(direction) {
+  if (!win || win.isDestroyed()) return;
+  let current = 1.0;
+  try {
+    current = win.webContents.getZoomFactor();
+  } catch (err) {
+    /* webContents belum siap */
+  }
+  setZoom(direction === 'in' ? current + ZOOM_STEP : current - ZOOM_STEP);
+}
+
 /**
- * Menangani event wheel (scroll) saat tombol Ctrl ditekan.
- * Scroll ke atas = zoom in, scroll ke bawah = zoom out.
- * Dipasang sebagai listener native di webContents.
+ * Daftarkan IPC zoom sekali saja saat modul dimuat.
+ * Sumber perintah adalah preload-zoom.js yang menangkap wheel event asli.
  */
 function setupZoomWheel() {
+  if (setupZoomWheel.done) return;
+  setupZoomWheel.done = true;
+
+  ipcMain.on('exam-zoom:delta', (_event, direction) => {
+    if (direction === 'in' || direction === 'out') nudgeZoom(direction);
+  });
+
+  ipcMain.on('exam-zoom:reset', () => resetZoom());
+}
+
+/**
+ * Pengaman: kalau ada jalur lain yang mengubah zoom (mis. pinch gesture),
+ * paksa kembali ke dalam rentang yang diizinkan. Tidak menambah step,
+ * jadi tidak pernah terjadi zoom dobel.
+ */
+function clampNativeZoom() {
   if (!win || win.isDestroyed()) return;
-
-  win.webContents.on('zoom-changed', (event, direction) => {
-    // Electron memancarkan event 'zoom-changed' ketika user melakukan
-    // Ctrl+Scroll secara native. Kita intercept dan atur sendiri
-    // supaya batas minimum 25% dan maksimum 300% dikontrol penuh.
-    event.preventDefault();
-
+  win.webContents.on('zoom-changed', () => {
     let current = 1.0;
     try {
       current = win.webContents.getZoomFactor();
     } catch (err) {
-      /* webContents belum siap */
+      return;
     }
-
-    if (direction === 'in') {
-      setZoom(current + ZOOM_STEP);
-    } else if (direction === 'out') {
-      setZoom(current - ZOOM_STEP);
-    }
+    if (current < ZOOM_MIN || current > ZOOM_MAX) setZoom(current);
+    else win.webContents.send('exam-zoom:changed', current);
   });
 }
 
@@ -531,9 +547,13 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: false,
-      sandbox: true
+      sandbox: true,
+      preload: path.join(__dirname, 'preload-zoom.js')
     }
   });
+
+  setupZoomWheel();
+  clampNativeZoom();
 
   win.webContents.setUserAgent(CHROME_UA);
 
@@ -579,7 +599,12 @@ function createWindow() {
 
     isCheatDetected = false;
     setTimeout(injectToolbar, 300);
-    setupZoomWheel();
+    // Samakan label zoom dengan nilai aktif setelah halaman selesai dimuat
+    try {
+      setZoom(win.webContents.getZoomFactor());
+    } catch (err) {
+      /* abaikan */
+    }
   });
 
   win.loadURL(appConfig.exam_portal_url);

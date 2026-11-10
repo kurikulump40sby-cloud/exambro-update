@@ -43,6 +43,7 @@
       "config.js",
       "exit-guard.js",
       "preload-exit.js",
+      "preload-zoom.js",
       "toolbar.js",
       "icon.ico"
     ]

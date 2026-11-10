@@ -121,14 +121,21 @@
     if (el) el.textContent = pct + '%';
   };
 
-  // Klik label zoom = reset ke 100% (dipanggil via custom event dari main)
+  // Klik label zoom = reset ke 100%
   zoomLabel.onclick = function () {
-    // Trigger reset via custom event yang didengar oleh main process interceptor
-    var ev = new CustomEvent('exam-zoom-reset');
-    window.dispatchEvent(ev);
-    // Fallback: coba set langsung via CSS transform (visual only)
+    if (window.examZoom && typeof window.examZoom.reset === 'function') {
+      window.examZoom.reset();
+    }
     window.__updateZoomLabel(1.0);
   };
+
+  // Dengar perubahan zoom dari main process lewat contextBridge
+  if (window.examZoom && typeof window.examZoom.onZoomChanged === 'function') {
+    window.examZoom.onZoomChanged(function (factor) {
+      window.__updateZoomLabel(factor);
+    });
+    window.__updateZoomLabel(window.examZoom.getZoom());
+  }
 
   // Sisipkan label zoom ke toolbar (sebelum jam)
   var tbRight = document.querySelector('.tb-right');
